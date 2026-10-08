@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel Financeiro</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Chart.js via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  /* ============ Tokens de design ============ */
+  :root{
+    --bg:#f3f4f8; --card:#ffffff; --borda:#e5e7ef;
+    --texto:#1f2433; --texto-suave:#6b7280;
+    --primaria:#6366F1; --primaria-escura:#4f46e5;
+    --entrada:#10B981; --entrada-bg:#e7f8f1;
+    --saida:#EF4444;   --saida-bg:#fdeaea;
+    --raio:16px; --sombra:0 1px 2px rgba(31,36,51,.05),0 8px 24px rgba(31,36,51,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    background:var(--bg);color:var(--texto);line-height:1.5;
+  }
+  .container{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
+
+  /* ============ Cabeçalho ============ */
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+  header h1{font-size:clamp(1.4rem,4vw,1.9rem);font-weight:800;letter-spacing:-.02em}
+  header p{color:var(--texto-suave);font-size:.95rem}
+  .btn-limpar{
+    font:inherit;font-size:.85rem;font-weight:600;color:var(--texto-suave);background:transparent;
+    border:1px solid var(--borda);border-radius:10px;padding:8px 14px;cursor:pointer
+  }
+  .btn-limpar:hover{color:var(--saida);border-color:var(--saida)}
+
+  /* ============ Cards de resumo ============ */
+  .resumo{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+  .card{background:var(--card);border-radius:var(--raio);box-shadow:var(--sombra);padding:20px}
+  .card-resumo{display:flex;flex-direction:column;gap:6px;border-left:5px solid var(--borda)}
+  .card-resumo .rotulo{font-size:.85rem;font-weight:600;color:var(--texto-suave)}
+  .card-resumo .valor{font-size:clamp(1.4rem,3.5vw,1.9rem);font-weight:800;letter-spacing:-.02em;word-break:break-word}
+  .card-saldo{border-color:var(--primaria)} .card-saldo .valor{color:var(--primaria)}
+  .card-entrada{border-color:var(--entrada)} .card-entrada .valor{color:var(--entrada)}
+  .card-saida{border-color:var(--saida)}   .card-saida .valor{color:var(--saida)}
+  .card-saldo .valor.negativo{color:var(--saida)}
+
+  /* ============ Layout principal ============ */
+  .grade{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:24px;align-items:start}
+  .coluna{display:flex;flex-direction:column;gap:24px;min-width:0}
+  .card h2{font-size:1.05rem;font-weight:700;margin-bottom:16px}
+
+  /* ============ Formulário ============ */
+  form{display:flex;flex-direction:column;gap:14px}
+  label{display:flex;flex-direction:column;gap:6px;font-size:.85rem;font-weight:600;color:var(--texto-suave)}
+  input,select{
+    font:inherit;font-size:.95rem;color:var(--texto);background:#fff;
+    border:1px solid var(--borda);border-radius:10px;padding:10px 12px;width:100%;
+  }
+  input:focus,select:focus,button:focus-visible{outline:3px solid rgba(99,102,241,.35);border-color:var(--primaria)}
+  .linha{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+  /* Seletor de tipo (Entrada / Saída) */
+  .tipo{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .tipo input{position:absolute;opacity:0;pointer-events:none}
+  .tipo label{
+    flex-direction:row;justify-content:center;align-items:center;gap:6px;cursor:pointer;
+    padding:10px;border:1px solid var(--borda);border-radius:10px;font-size:.9rem;color:var(--texto-suave);
+    transition:background .15s,color .15s,border-color .15s
+  }
+  .tipo input:checked + label.l-entrada{background:var(--entrada-bg);color:#047857;border-color:var(--entrada)}
+  .tipo input:checked + label.l-saida{background:var(--saida-bg);color:#b91c1c;border-color:var(--saida)}
+  .tipo input:focus-visible + label{outline:3px solid rgba(99,102,241,.35)}
+
+  .btn-adicionar{
+    font:inherit;font-weight:700;color:#fff;background:var(--primaria);border:0;border-radius:12px;
+    padding:12px;cursor:pointer;transition:background .15s,transform .1s
+  }
+  .btn-adicionar:hover{background:var(--primaria-escura)}
+  .btn-adicionar:active{transform:scale(.98)}
+  .erro{color:var(--saida);font-size:.85rem;font-weight:600;min-height:1.2em}
+
+  /* ============ Gráficos ============ */
+  .graficos{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .grafico-box{position:relative;height:260px}
+  .vazio-grafico{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    text-align:center;color:var(--texto-suave);font-size:.9rem;padding:16px
+  }
+
+  /* ============ Filtros e tabela ============ */
+  .filtros{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:16px}
+  .tabela-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.92rem}
+  th{text-align:left;font-size:.78rem;color:var(--texto-suave);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--borda);white-space:nowrap}
+  td{padding:12px;border-bottom:1px solid var(--borda);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  td.valor{font-weight:700;white-space:nowrap;text-align:right}
+  th.valor{text-align:right}
+  .v-entrada{color:var(--entrada)} .v-saida{color:var(--saida)}
+  .selo{display:inline-block;font-size:.78rem;font-weight:700;padding:3px 10px;border-radius:999px}
+  .selo-entrada{background:var(--entrada-bg);color:#047857}
+  .selo-saida{background:var(--saida-bg);color:#b91c1c}
+  .btn-excluir{
+    font:inherit;font-size:.8rem;font-weight:600;color:var(--texto-suave);background:transparent;
+    border:1px solid var(--borda);border-radius:8px;padding:6px 10px;cursor:pointer
+  }
+  .btn-excluir:hover{color:#fff;background:var(--saida);border-color:var(--saida)}
+  .estado-vazio{text-align:center;color:var(--texto-suave);padding:32px 12px}
+
+  /* ============ Responsividade ============ */
+  @media (max-width:1000px){
+    .grade{grid-template-columns:1fr}
+    .graficos{grid-template-columns:1fr}
+  }
+  @media (max-width:700px){
+    .resumo{grid-template-columns:1fr}
+    .filtros{grid-template-columns:1fr}
+    /* Tabela vira lista de cartões no celular */
+    thead{display:none}
+    table,tbody,tr,td{display:block;width:100%}
+    tr{padding:12px 0;border-bottom:1px solid var(--borda)}
+    tbody tr:last-child{border-bottom:0}
+    td{border:0;padding:4px 0;display:flex;justify-content:space-between;gap:12px;text-align:right}
+    td::before{content:attr(data-rotulo);font-size:.78rem;font-weight:700;color:var(--texto-suave);text-align:left}
+    td.valor{text-align:right}
+    td.acao{justify-content:flex-end;padding-top:8px}
+    td.acao::before{content:none}
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div>
+      <h1>💼 Painel Financeiro</h1>
+      <p>Acompanhe suas receitas, despesas e para onde o dinheiro está indo.</p>
+    </div>
+    <button class="btn-limpar" id="btn-limpar" type="button">Apagar tudo</button>
+  </header>
+
+  <!-- ===== Resumo ===== -->
+  <section class="resumo" aria-label="Resumo financeiro">
+    <article class="card card-resumo card-saldo">
+      <span class="rotulo">Total disponível</span>
+      <span class="valor" id="total-saldo">R$ 0,00</span>
+    </article>
+    <article class="card card-resumo card-entrada">
+      <span class="rotulo">Total de entradas</span>
+      <span class="valor" id="total-entradas">R$ 0,00</span>
+    </article>
+    <article class="card card-resumo card-saida">
+      <span class="rotulo">Total de saídas</span>
+      <span class="valor" id="total-saidas">R$ 0,00</span>
+    </article>
+  </section>
+
+  <div class="grade">
+
+    <!-- ===== Coluna esquerda: formulário ===== -->
+    <aside class="coluna">
+      <section class="card">
+        <h2>Nova transação</h2>
+        <form id="form" novalidate>
+          <label>Descrição
+            <input type="text" id="descricao" placeholder="Ex.: Salário, Mercado, Aluguel" maxlength="60" required>
+          </label>
+
+          <div class="linha">
+            <label>Valor (R$)
+              <input type="number" id="valor" placeholder="0,00" min="0.01" step="0.01" inputmode="decimal" required>
+            </label>
+            <label>Data
+              <input type="date" id="data" required>
+            </label>
+          </div>
+
+          <div class="tipo" role="radiogroup" aria-label="Tipo da transação">
+            <input type="radio" name="tipo" id="tipo-entrada" value="entrada">
+            <label class="l-entrada" for="tipo-entrada">⬆ Entrada</label>
+            <input type="radio" name="tipo" id="tipo-saida" value="saida" checked>
+            <label class="l-saida" for="tipo-saida">⬇ Saída</label>
+          </div>
+
+          <label>Categoria
+            <select id="categoria"></select>
+          </label>
+
+          <div class="erro" id="erro" role="alert"></div>
+          <button type="submit" class="btn-adicionar">Adicionar transação</button>
+        </form>
+      </section>
+    </aside>
+
+    <!-- ===== Coluna direita: gráficos + lista ===== -->
+    <div class="coluna">
+      <section class="graficos" aria-label="Gráficos">
+        <div class="card">
+          <h2>Despesas por categoria</h2>
+          <div class="grafico-box">
+            <canvas id="grafico-rosca" aria-label="Gráfico de rosca das despesas por categoria" role="img"></canvas>
+            <div class="vazio-grafico" id="vazio-rosca">Adicione uma despesa para ver a distribuição.</div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Entradas vs. saídas</h2>
+          <div class="grafico-box">
+            <canvas id="grafico-barras" aria-label="Gráfico de barras comparando entradas e saídas" role="img"></canvas>
+            <div class="vazio-grafico" id="vazio-barras">Adicione transações para ver o comparativo.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Transações</h2>
+        <div class="filtros">
+          <input type="search" id="busca" placeholder="🔍 Buscar por nome ou categoria" aria-label="Buscar transações">
+          <select id="filtro-categoria" aria-label="Filtrar por categoria"></select>
+          <select id="filtro-tipo" aria-label="Filtrar por tipo">
+            <option value="">Todos os tipos</option>
+            <option value="entrada">Entradas</option>
+            <option value="saida">Saídas</option>
+          </select>
+        </div>
+
+        <div class="tabela-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th><th>Descrição</th><th>Categoria</th><th>Tipo</th>
+                <th class="valor">Valor</th><th><span class="sr-only" style="position:absolute;left:-9999px">Ações</span></th>
+              </tr>
+            </thead>
+            <tbody id="lista"></tbody>
+          </table>
+        </div>
+        <div class="estado-vazio" id="estado-vazio" hidden></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* =========================================================
+     CONFIGURAÇÕES E ESTADO
+  ========================================================= */
+  const CHAVE_STORAGE = "painel-financeiro:transacoes";
+  const CATEGORIAS = ["Alimentação","Moradia","Transporte","Lazer","Salário","Investimentos","Outros"];
+  const CORES_CATEGORIA = {
+    "Alimentação":"#F59E0B","Moradia":"#6366F1","Transporte":"#06B6D4","Lazer":"#EC4899",
+    "Salário":"#10B981","Investimentos":"#8B5CF6","Outros":"#94A3B8"
+  };
+  const COR_ENTRADA = "#10B981", COR_SAIDA = "#EF4444";
+
+  /** Formatador de moeda em Reais */
+  const moeda = new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" });
+
+  /** Lista de transações: { id, descricao, valor, tipo, categoria, data } */
+  let transacoes = carregar();
+
+  /* =========================================================
+     ELEMENTOS DO DOM
+  ========================================================= */
+  const $ = (id) => document.getElementById(id);
+  const form = $("form"), inDescricao = $("descricao"), inValor = $("valor"), inData = $("data"),
+        inCategoria = $("categoria"), erro = $("erro"),
+        lista = $("lista"), estadoVazio = $("estado-vazio"),
+        busca = $("busca"), filtroCategoria = $("filtro-categoria"), filtroTipo = $("filtro-tipo");
+
+  /* =========================================================
+     PERSISTÊNCIA (localStorage)
+  ========================================================= */
+  function carregar() {
+    try {
+      const dados = JSON.parse(localStorage.getItem(CHAVE_STORAGE));
+      return Array.isArray(dados) ? dados : [];
+    } catch { return []; }
+  }
+  function salvar() {
+    try { localStorage.setItem(CHAVE_STORAGE, JSON.stringify(transacoes)); } catch { /* armazenamento indisponível */ }
+  }
+
+  /* =========================================================
+     UTILITÁRIOS
+  ========================================================= */
+  /** Data de hoje no formato YYYY-MM-DD (fuso local) */
+  function hojeISO() {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
+  }
+  /** "2025-03-09" -> "09/03/2025" (sem converter fuso) */
+  function formatarData(iso) {
+    const [a, m, d] = iso.split("-");
+    return `${d}/${m}/${a}`;
+  }
+  function gerarId() {
+    return (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2));
+  }
+  /** Cria elemento com texto seguro (evita injeção de HTML) */
+  function el(tag, props = {}, texto) {
+    const e = document.createElement(tag);
+    Object.assign(e, props);
+    if (texto !== undefined) e.textContent = texto;
+    return e;
+  }
+
+  /* =========================================================
+     INICIALIZAÇÃO DOS CAMPOS
+  ========================================================= */
+  function preencherSelects() {
+    CATEGORIAS.forEach(c => inCategoria.append(el("option", { value:c }, c)));
+    filtroCategoria.append(el("option", { value:"" }, "Todas as categorias"));
+    CATEGORIAS.forEach(c => filtroCategoria.append(el("option", { value:c }, c)));
+  }
+
+  /* =========================================================
+     RESUMO FINANCEIRO
+  ========================================================= */
+  function totais() {
+    let entradas = 0, saidas = 0;
+    for (const t of transacoes) {
+      if (t.tipo === "entrada") entradas += t.valor; else saidas += t.valor;
+    }
+    return { entradas, saidas, saldo: entradas - saidas };
+  }
+  function renderResumo() {
+    const { entradas, saidas, saldo } = totais();
+    $("total-entradas").textContent = moeda.format(entradas);
+    $("total-saidas").textContent = moeda.format(saidas);
+    const s = $("total-saldo");
+    s.textContent = moeda.format(saldo);
+    s.classList.toggle("negativo", saldo < 0);
+  }
+
+  /* =========================================================
+     LISTA / TABELA COM FILTROS
+  ========================================================= */
+  function transacoesFiltradas() {
+    const termo = busca.value.trim().toLowerCase();
+    return transacoes
+      .filter(t =>
+        (!termo || t.descricao.toLowerCase().includes(termo) || t.categoria.toLowerCase().includes(termo)) &&
+        (!filtroCategoria.value || t.categoria === filtroCategoria.value) &&
+        (!filtroTipo.value || t.tipo === filtroTipo.value))
+      .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id));
+  }
+
+  function renderLista() {
+    const itens = transacoesFiltradas();
+    lista.replaceChildren();
+
+    if (!itens.length) {
+      estadoVazio.hidden = false;
+      estadoVazio.textContent = transacoes.length
+        ? "Nenhuma transação encontrada com esses filtros."
+        : "Nenhuma transação ainda. Use o formulário para adicionar a primeira ✨";
+      return;
+    }
+    estadoVazio.hidden = true;
+
+    for (const t of itens) {
+      const ehEntrada = t.tipo === "entrada";
+      const tr = el("tr");
+
+      const celula = (rotulo, conteudo, classe = "") => {
+        const td = el("td", { className: classe });
+        td.dataset.rotulo = rotulo;
+        td.append(conteudo);
+        return td;
+      };
+
+      const selo = el("span", { className: "selo " + (ehEntrada ? "selo-entrada" : "selo-saida") },
+                      ehEntrada ? "Entrada" : "Saída");
+      const valorTxt = (ehEntrada ? "+ " : "− ") + moeda.format(t.valor);
+
+      const btn = el("button", { type:"button", className:"btn-excluir" }, "Excluir");
+      btn.setAttribute("aria-label", `Excluir ${t.descricao}`);
+      btn.addEventListener("click", () => excluir(t.id));
+
+      tr.append(
+        celula("Data", formatarData(t.data)),
+        celula("Descrição", t.descricao),
+        celula("Categoria", t.categoria),
+        celula("Tipo", selo),
+        celula("Valor", valorTxt, "valor " + (ehEntrada ? "v-entrada" : "v-saida")),
+        celula("", btn, "acao")
+      );
+      lista.append(tr);
+    }
+  }
+
+  /* =========================================================
+     GRÁFICOS (Chart.js)
+  ========================================================= */
+  let graficoRosca = null, graficoBarras = null;
+
+  function renderGraficos() {
+    if (typeof Chart === "undefined") return; // CDN indisponível
+
+    /* --- Rosca: despesas por categoria --- */
+    const porCategoria = {};
+    transacoes.filter(t => t.tipo === "saida")
+      .forEach(t => porCategoria[t.categoria] = (porCategoria[t.categoria] || 0) + t.valor);
+    const rotulos = Object.keys(porCategoria);
+    const valores = rotulos.map(r => porCategoria[r]);
+
+    $("vazio-rosca").style.display = rotulos.length ? "none" : "flex";
+    if (!graficoRosca) {
+      graficoRosca = new Chart($("grafico-rosca"), {
+        type: "doughnut",
+        data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderWidth: 2, borderColor: "#fff" }] },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: "62%",
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, usePointStyle: true } },
+            tooltip: { callbacks: { label: (c) => ` ${c.label}: ${moeda.format(c.parsed)}` } }
+          }
+        }
+      });
+    }
+    graficoRosca.data.labels = rotulos;
+    graficoRosca.data.datasets[0].data = valores;
+    graficoRosca.data.datasets[0].backgroundColor = rotulos.map(r => CORES_CATEGORIA[r] || "#94A3B8");
+    graficoRosca.update();
+
+    /* --- Barras: entradas vs saídas --- */
+    const { entradas, saidas } = totais();
+    $("vazio-barras").style.display = transacoes.length ? "none" : "flex";
+    if (!graficoBarras) {
+      graficoBarras = new Chart($("grafico-barras"), {
+        type: "bar",
+        data: {
+          labels: ["Entradas", "Saídas"],
+          datasets: [{ data: [0, 0], backgroundColor: [COR_ENTRADA, COR_SAIDA], borderRadius: 10, maxBarThickness: 90 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (c) => " " + moeda.format(c.parsed.y) } }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: (v) => moeda.format(v) }, grid: { color: "#eef0f5" } },
+            x: { grid: { display: false } }
+          }
+        }
+      });
+    }
+    graficoBarras.data.datasets[0].data = [entradas, saidas];
+    graficoBarras.update();
+  }
+
+  /* =========================================================
+     AÇÕES
+  ========================================================= */
+  function renderTudo() {
+    renderResumo();
+    renderLista();
+    renderGraficos();
+  }
+
+  function adicionar(e) {
+    e.preventDefault();
+    const descricao = inDescricao.value.trim();
+    const valor = parseFloat(inValor.value);
+    const data = inData.value;
+    const tipo = form.elements["tipo"].value;
+    const categoria = inCategoria.value;
+
+    // Validações simples com mensagem clara
+    if (!descricao) return mostrarErro("Informe uma descrição.", inDescricao);
+    if (!Number.isFinite(valor) || valor <= 0) return mostrarErro("Informe um valor maior que zero.", inValor);
+    if (!data) return mostrarErro("Escolha a data da transação.", inData);
+
+    transacoes.push({ id: gerarId(), descricao, valor: Math.round(valor * 100) / 100, tipo, categoria, data });
+    salvar();
+    renderTudo();
+
+    // Limpa o formulário, mantendo tipo, categoria e data para facilitar novos lançamentos
+    erro.textContent = "";
+    inDescricao.value = "";
+    inValor.value = "";
+    inDescricao.focus();
+  }
+
+  function mostrarErro(msg, campo) {
+    erro.textContent = msg;
+    campo.focus();
+  }
+
+  function excluir(id) {
+    transacoes = transacoes.filter(t => t.id !== id);
+    salvar();
+    renderTudo();
+  }
+
+  function apagarTudo() {
+    if (!transacoes.length) return;
+    if (confirm("Apagar todas as transações? Essa ação não pode ser desfeita.")) {
+      transacoes = [];
+      salvar();
+      renderTudo();
+    }
+  }
+
+  /* =========================================================
+     EVENTOS E START
+  ========================================================= */
+  form.addEventListener("submit", adicionar);
+  [busca, filtroCategoria, filtroTipo].forEach(c => c.addEventListener("input", renderLista));
+  $("btn-limpar").addEventListener("click", apagarTudo);
+
+  // Sugere uma categoria coerente ao trocar o tipo
+  document.querySelectorAll('input[name="tipo"]').forEach(r =>
+    r.addEventListener("change", () => {
+      if (r.value === "entrada" && inCategoria.value !== "Investimentos") inCategoria.value = "Salário";
+      if (r.value === "saida" && ["Salário","Investimentos"].includes(inCategoria.value)) inCategoria.value = "Alimentação";
+    }));
+
+  preencherSelects();
+  inData.value = hojeISO();
+  renderTudo();
+})();
+</script>
+</body>
+</html>
